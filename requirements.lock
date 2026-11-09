@@ -1,0 +1,21 @@
+# 直接依赖版本锁定（Python 3.14）。
+# 通过 `python -m pip install -r requirements.lock` 安装；开发工具也包含在此文件中。
+# 间接依赖由安装器根据这些顶层版本解析，并应在发布环境中保存安装清单。
+
+alembic==1.14.1
+asyncpg==0.30.0
+argon2-cffi==23.1.0
+cryptography==49.0.0
+PySocks==1.7.1
+fastapi==0.115.6
+pydantic-settings==2.7.1
+SQLAlchemy[asyncio]==2.0.36
+uvicorn[standard]==0.34.0
+
+# 开发与质量工具
+hatchling==1.27.0
+mypy==1.14.1
+pytest==8.3.4
+pytest-asyncio==0.25.2
+pytest-cov==6.0.0
+ruff==0.9.6

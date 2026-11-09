@@ -1,0 +1,1 @@
+Alembic migration directory. Use DATABASE_URL from the environment when running migrations.

@@ -1,0 +1,70 @@
+[build-system]
+requires = ["hatchling>=1.27,<2"]
+build-backend = "hatchling.build"
+
+[project]
+name = "imap-mail-monitor"
+version = "0.1.0"
+description = "基于 IMAP、PostgreSQL、FastAPI 和 Vue 3 的邮件监控服务"
+readme = "README.md"
+requires-python = ">=3.14,<3.15"
+license = { text = "Proprietary" }
+authors = [{ name = "Project Team" }]
+dependencies = [
+    "alembic>=1.14,<2",
+    "asyncpg>=0.30,<1",
+    "argon2-cffi>=23,<26",
+    "cryptography>=43,<50",
+    "PySocks>=1.7,<2",
+    "fastapi>=0.115,<1",
+    "pydantic-settings>=2.7,<3",
+    "sqlalchemy[asyncio]>=2.0.36,<3",
+    "uvicorn[standard]>=0.34,<1",
+]
+
+[dependency-groups]
+dev = [
+    "mypy>=1.14,<2",
+    "pytest>=8.3,<9",
+    "pytest-asyncio>=0.25,<1",
+    "pytest-cov>=6,<7",
+    "ruff>=0.9,<1",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]
+
+[tool.pytest.ini_options]
+addopts = "--strict-config --strict-markers"
+testpaths = ["tests"]
+pythonpath = ["."]
+asyncio_mode = "auto"
+markers = [
+    "integration: 需要显式 TEST_DATABASE_URL 的真实外部依赖验收",
+    "performance: 可选的本地性能样本，需要显式 RUN_PERF_TESTS=1",
+]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+src = ["app", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+# Alembic 迁移中的长 SQL 字符串需要保持可直接审阅的 SQL 形状；其余源码仍按
+# 100 列执行 E501，迁移文件的例外范围仅限版本脚本。
+per-file-ignores = { "migrations/versions/*.py" = ["E501"] }
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.mypy]
+python_version = "3.14"
+strict = true
+files = ["app", "tests"]
+# 旧 Gmail API/OAuth/Redis/Pub-Sub/Webhook 实现和对应测试保留作迁移证据，
+# 但不属于当前 IMAP 运行路径。当前路径仍由显式 app/imap、app/services、
+# app/db、app/auth/admin、app/main、app/workers/imap_manager 及当前测试覆盖。
+exclude = ['(^|/)(app/(auth/oauth\.py|gmail/|notifications/|pubsub\.py|redis_client\.py|workers/(gmail_sync_worker|message_worker|notification_worker|scheduler)\.py)|tests/(integration/|test_(config|gmail_client|gmail_mime|gmail_quota|gmail_sync|gmail_watch|health_and_lifespan|notifications|oauth|pubsub|redis_streams|resources|transactions|worker)\.py))']
+

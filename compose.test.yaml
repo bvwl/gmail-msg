@@ -1,0 +1,53 @@
+name: imap-mail-test
+
+services:
+  postgres-test:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${TEST_POSTGRES_DB:-imap_mail_test}
+      POSTGRES_USER: ${TEST_POSTGRES_USER:-imap_test}
+      POSTGRES_PASSWORD: ${TEST_POSTGRES_PASSWORD:-imap_test_only}
+    ports:
+      - "127.0.0.1:${TEST_POSTGRES_PORT:-55432}:5432"
+    volumes:
+      - imap-mail-test-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    networks: [imap-mail-test]
+
+  imap-test:
+    image: greenmail/standalone:2.1.3
+    environment:
+      GREENMAIL_USERS: test-mailbox:PLACEHOLDER_ONLY@example.com
+      GREENMAIL_OPTS: >-
+        -Dgreenmail.imap.hostname=0.0.0.0
+        -Dgreenmail.imap.port=3143
+        -Dgreenmail.imaps.hostname=0.0.0.0
+        -Dgreenmail.imaps.port=3993
+        -Dgreenmail.auth.disabled
+    ports:
+      - "127.0.0.1:${TEST_IMAP_PORT:-5143}:3143"
+      - "127.0.0.1:${TEST_IMAPS_PORT:-5993}:3993"
+    networks: [imap-mail-test]
+
+  socks5-test:
+    image: serjs/go-socks5-proxy@sha256:0af522996f402c03ecd985a87997158eabeb28935365e3a384df37eafcf740ea
+    environment:
+      PROXY_USER: TEST_PROXY_USER
+      PROXY_PASSWORD: PLACEHOLDER_ONLY
+    ports:
+      - "127.0.0.1:${TEST_SOCKS5_PORT:-51080}:1080"
+    networks: [imap-mail-test]
+
+volumes:
+  imap-mail-test-postgres:
+    name: imap-mail-test-postgres
+
+networks:
+  imap-mail-test:
+    name: imap-mail-test
+    driver: bridge
+

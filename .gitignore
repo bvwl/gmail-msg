@@ -1,0 +1,42 @@
+.venv/
+.env
+.env.*
+!.env.example
+!.env.test.example
+!.env.production.example
+
+# IDE and local tooling
+.idea/
+.vscode/
+.playwright-cli/
+
+# Python caches and test/build output
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+*.py[cod]
+.coverage
+.coverage.*
+coverage/
+htmlcov/
+.tox/
+*.egg-info/
+
+# Frontend dependencies and generated bundles
+frontend/node_modules/
+frontend/dist/
+
+# Local logs and OS metadata
+*.log
+.DS_Store
+
+# Local databases, reports, and secret key containers
+*.db
+*.sqlite
+*.sqlite3
+*.pem
+*.p12
+*.pfx
+htmlcov/
+
