@@ -12,6 +12,7 @@
                                       └─ per-mailbox IMAP Worker -> direct or SOCKS5 -> Gmail IMAP TLS
 
 - PostgreSQL 不暴露公网，只允许 FastAPI、Worker 和清理任务访问。
+- Worker 同时加入 backend 与 public 网络，以便连接 Gmail IMAP TLS 或邮箱配置的 SOCKS5 代理；public 是出站桥接网络，不为 Worker 发布宿主机端口。PostgreSQL 仍仅加入 internal 的 backend 网络。
 - Compose 只把前端发布到本机回环端口；公网 HTTPS 由宿主机反向代理或云负载均衡终止。
 - IMAP 连接必须使用 TLS（通常 993 端口）；证书校验开启。
 - Vue 3 独立构建和部署；FastAPI 只提供 REST API，不直接承载前端页面。
