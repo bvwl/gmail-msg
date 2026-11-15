@@ -10,17 +10,24 @@ async function request(path: string, options: RequestInit = {}) {
     window.location.href = '/login'
     throw new Error('AUTH_REQUIRED')
   }
+  const text = response.status === 204 ? '' : await response.text()
+  let body: unknown = null
+  if (text) {
+    try { body = JSON.parse(text) } catch { body = text }
+  }
   if (!response.ok) {
-    let message = 'request_failed'
-    try {
-      const body = await response.json()
-      message = body.detail?.message || body.detail || message
-    } catch {
-      message = (await response.text()) || message
+    const detail = body && typeof body === 'object' && 'detail' in body
+      ? (body as { detail: unknown }).detail : body
+    let message = `请求失败（HTTP ${response.status}）`
+    if (typeof detail === 'string' && detail.trim()) {
+      message = detail.startsWith('<') ? message : detail
+    } else if (detail && typeof detail === 'object') {
+      message = 'message' in detail && typeof detail.message === 'string'
+        ? detail.message : JSON.stringify(detail)
     }
     throw new Error(message)
   }
-  return response.status === 204 ? null : response.json()
+  return body
 }
 
 export type MailboxPayload = {

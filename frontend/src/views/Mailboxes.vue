@@ -190,7 +190,7 @@ function closeCreate() {
 
 async function createMailbox() {
   formError.value = ''
-  if (!form.address.trim() || !form.username.trim() || !form.app_password.trim()) {
+  if (!form.address.trim() || !form.username.trim() || !form.app_password.replace(/\s/g, '')) {
     formError.value = '请填写邮箱地址、用户名和 App Password'
     return
   }
@@ -199,7 +199,7 @@ async function createMailbox() {
     username: form.username.trim(),
     imap_host: form.imap_host.trim() || 'imap.gmail.com',
     imap_port: Number(form.imap_port),
-    app_password: form.app_password.trim(),
+    app_password: form.app_password.replace(/\s/g, ''),
     proxy_mode: form.proxy_mode,
     proxy_host: form.proxy_mode !== 'direct' ? form.proxy_host.trim() || null : null,
     proxy_port: form.proxy_mode !== 'direct' ? Number(form.proxy_port) : null,

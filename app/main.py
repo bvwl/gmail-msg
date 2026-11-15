@@ -77,6 +77,19 @@ class MailboxRequest(BaseModel):
     def normalize_imap_host(cls, value: str) -> str:
         return value.strip().lower()
 
+    @field_validator("app_password", mode="before")
+    @classmethod
+    def normalize_app_password(cls, value: object) -> object:
+        if value is None:
+            return None
+        raw = value.get_secret_value() if isinstance(value, SecretStr) else value
+        if not isinstance(raw, str):
+            return value
+        normalized = "".join(raw.split())
+        if not normalized:
+            raise ValueError("APP_PASSWORD_REQUIRED")
+        return normalized
+
     @field_validator("proxy_host")
     @classmethod
     def validate_proxy_host_input(cls, value: str | None) -> str | None:
@@ -102,6 +115,19 @@ class MailboxPatch(BaseModel):
     proxy_password: SecretStr | None = None
     proxy_password_secret_ref: str | None = None
     proxy_dns_mode: str | None = None
+
+    @field_validator("app_password", mode="before")
+    @classmethod
+    def normalize_app_password(cls, value: object) -> object:
+        if value is None:
+            return None
+        raw = value.get_secret_value() if isinstance(value, SecretStr) else value
+        if not isinstance(raw, str):
+            return value
+        normalized = "".join(raw.split())
+        if not normalized:
+            raise ValueError("APP_PASSWORD_REQUIRED")
+        return normalized
 
     @field_validator("proxy_host")
     @classmethod
@@ -327,7 +353,7 @@ def create_app(
                 status_code=503,
             )
 
-    @app.post("/api/admin/login", status_code=204)
+    @app.post("/api/admin/login", status_code=200)
     async def login(payload: LoginRequest, response: Response, request: Request) -> None:
         now = datetime.now(UTC)
         async with app.state.database.session() as db:
@@ -374,7 +400,7 @@ def create_app(
                 path="/",
             )
 
-    @app.post("/api/admin/logout", status_code=204)
+    @app.post("/api/admin/logout", status_code=200)
     async def logout(
         response: Response,
         request: Request,
@@ -661,7 +687,7 @@ def create_app(
         await db.commit()
         return {"status": "stopped"}
 
-    @app.delete("/api/mailboxes/{mailbox_id}", status_code=204)
+    @app.delete("/api/mailboxes/{mailbox_id}", status_code=200)
     async def delete_mailbox(
         mailbox_id: UUID,
         request: Request,
