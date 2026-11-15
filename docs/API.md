@@ -25,7 +25,7 @@ API Key 不返回给前端，不写入日志；生产环境必须配置随机长
 
     {"username":"ADMIN_USER","password":"ADMIN_PASSWORD"}
 
-成功返回 204，并设置 Cookie：
+成功返回 200（JSON `null`），并设置 Cookie：
 
 - 名称由配置指定，例如 admin_session。
 - HttpOnly、Secure、SameSite=Strict，生产环境必须设置 Path=/ 和合理过期时间。
@@ -35,7 +35,7 @@ API Key 不返回给前端，不写入日志；生产环境必须配置随机长
 
 ### POST /api/admin/logout
 
-撤销当前 Session，清除 Cookie，成功返回 204。重复登出应保持幂等。
+撤销当前 Session，清除 Cookie，成功返回 200（JSON `null`）。重复登出应保持幂等。
 
 ### GET /api/admin/audit-logs
 
@@ -138,3 +138,8 @@ API Key 不返回给前端，不写入日志；生产环境必须配置随机长
 - 详情页展示完整正文、元数据和标签，HTML 正文先清理后渲染。
 - 状态页展示 Worker 心跳、UID 游标、断线补查、认证错误和 30 天清理进度。
 
+
+
+### Gmail 应用专用密码归一化
+
+新增及更新邮箱的 `app_password` 会移除所有空白字符，包括首尾和中间空格、制表符与换行；全空白输入返回 422。更新时未传该字段保持原值。此处理不适用于管理员密码或代理密码；历史密文不会批量重写。

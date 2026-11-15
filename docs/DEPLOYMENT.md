@@ -68,3 +68,18 @@ IMAP IDLE 是连接保持机制，不保证服务器事件永不丢失；Worker 
 4. 验证 `docker compose --env-file .env.production -f compose.prod.yaml ps`，确认 `migrate` 已成功完成、`api` 健康、`frontend` 正常运行。
 5. PostgreSQL 没有宿主机端口映射；备份使用 `docker compose exec postgres pg_dump` 或受控备份任务，并加密保存。
 
+
+
+## 配置与前端修复说明
+
+- `CORS_ORIGINS`、`IMAP_ALLOWED_HOSTS`、`PROXY_ALLOWED_HOSTS` 是列表字段，环境变量使用 JSON 数组，空列表使用 `[]`。
+- Fernet 密钥必须使用生成器原样输出，保留 Base64 末尾的 `=` 填充符，不要自行删除填充符或替换已使用的密钥。
+- 前端请求只读取一次响应体，非 JSON 错误不会再触发响应流重复读取。
+- Nginx 显式设置 `/usr/share/nginx/html` 静态根目录及 `index.html`。外部使用 HTTPS 时，回环上游通常仍使用 HTTP。
+- 本次修复不包含生产 `.env`、主机配置、凭据或备份文件。VPS 临时采用的 Python 3.13 镜像与 Nginx 权限改动未直接写回，避免违背仓库 Python 3.14 契约或未经审阅降低安全限制；原始 Compose 兼容性问题仍需单独处理。
+
+### 修复回归验证
+
+- 前端：`node --test frontend/tests/api-response.test.mjs`，需要 Node.js 24+，模拟 Fetch，不连接真实邮箱；本次 6 项通过。
+- 后端：`tests/test_app_password_normalization.py` 覆盖新增/更新、空白拒绝、代理和管理员密码不变及路由注册；在已部署 Python 3.13 容器中 18 项通过，仅模型校验，不写业务数据、不连接真实邮箱。
+- 本机 Conda claw/Python 3.14 完成语法检查；尚未完成仓库 Python 3.14 依赖矩阵及全量测试。
