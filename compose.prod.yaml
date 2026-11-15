@@ -67,7 +67,8 @@ services:
     depends_on:
       migrate:
         condition: service_completed_successfully
-    networks: [backend]
+    # IMAP/SOCKS5 needs outbound access; PostgreSQL remains backend-only.
+    networks: [backend, public]
     read_only: true
     tmpfs: [/tmp]
     security_opt: [no-new-privileges:true]
