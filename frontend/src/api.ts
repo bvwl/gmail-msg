@@ -45,6 +45,17 @@ export type MailboxPayload = {
   folders: string[]
 }
 
+export type MessageSummary = {
+  id: string
+  subject: string | null
+  from_address: string | null
+  to_addresses: string[]
+  received_at: string | null
+  preview: string
+}
+
+export type MessagePage = { page: number; page_size: number; total: number; items: MessageSummary[] }
+
 export const api = {
   login: (username: string, password: string) =>
     request('/api/admin/login', { method: 'POST', body: JSON.stringify({ username, password }) }),
@@ -55,8 +66,15 @@ export const api = {
   startMailbox: (id: string) => request(`/api/mailboxes/${id}/start`, { method: 'POST' }),
   stopMailbox: (id: string) => request(`/api/mailboxes/${id}/stop`, { method: 'POST' }),
   deleteMailbox: (id: string) => request(`/api/mailboxes/${id}`, { method: 'DELETE' }),
-  messages: (id: string, folder = 'all', q = '', recipient = '', page = 1, pageSize = 10) =>
-    request(`/api/mailboxes/${id}/messages?folder=${folder}&q=${encodeURIComponent(q)}&recipient=${encodeURIComponent(recipient)}&page=${page}&page_size=${pageSize}`),
+  messages: (
+    id: string, folder = 'all', q = '', recipient = '', page = 1, pageSize = 10,
+    signal?: AbortSignal,
+  ): Promise<MessagePage> => {
+    const params = new URLSearchParams({
+      folder, q, recipient, page: String(page), page_size: String(pageSize),
+    })
+    return request(`/api/mailboxes/${id}/messages?${params}`, { signal }) as Promise<MessagePage>
+  },
   detail: (id: string) => request(`/api/messages/${id}`),
   codes: (id: string) => request(`/api/mailboxes/${id}/codes?include_value=true`),
 }
