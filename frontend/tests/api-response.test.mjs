@@ -7,7 +7,7 @@ import test from 'node:test'
 let source = await readFile(new URL('../src/api.ts', import.meta.url), 'utf8')
 source = source.replace('import.meta.env.VITE_API_BASE', 'undefined')
 source = stripTypeScriptTypes(source, { mode: 'strip' }) + '\nexport { request };'
-const { request } = await import('data:text/javascript;base64,' + Buffer.from(source).toString('base64'))
+const { api, request } = await import('data:text/javascript;base64,' + Buffer.from(source).toString('base64'))
 
 test('response bodies are consumed only once', async (t) => {
   const originalFetch = globalThis.fetch
@@ -39,5 +39,26 @@ test('response bodies are consumed only once', async (t) => {
     globalThis.fetch = originalFetch
     if (originalWindow === undefined) delete globalThis.window
     else globalThis.window = originalWindow
+  }
+})
+
+test('message search preserves the legacy HTTP parameters and supports local cancellation', async () => {
+  const originalFetch = globalThis.fetch
+  const signal = new AbortController().signal
+  try {
+    globalThis.fetch = async (path, options) => {
+      const url = new URL(path, 'http://example.test')
+      assert.equal(url.pathname, '/api/mailboxes/test-id/messages')
+      assert.deepEqual(Object.fromEntries(url.searchParams), {
+        folder: 'inbox', q: 'query & filter', recipient: 'mail.box123+tag@gmail.com',
+        page: '2', page_size: '100',
+      })
+      assert.equal(options.signal, signal)
+      return Response.json({ total: 0, items: [] })
+    }
+    const result = await api.messages('test-id', 'inbox', 'query & filter', 'mail.box123+tag@gmail.com', 2, 100, signal)
+    assert.deepEqual(result.items, [])
+  } finally {
+    globalThis.fetch = originalFetch
   }
 })

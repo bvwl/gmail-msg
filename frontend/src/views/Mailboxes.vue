@@ -1,13 +1,22 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
-import { api, type MailboxPayload } from '../api'
+import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
+import { api, type MailboxPayload, type MessageSummary } from '../api'
+import { canIncludeDottedAliases, collectRecipientMatches } from '../recipient-search'
 
 const rows = ref<any[]>([])
 const selected = ref<any | null>(null)
-const messages = ref<any[]>([])
+const messages = ref<MessageSummary[]>([])
 const folder = ref('all')
 const q = ref('')
 const recipient = ref('')
+const includeDottedAliases = ref(false)
+const showDottedAliases = computed(() => canIncludeDottedAliases(recipient.value))
+watch(recipient, () => { includeDottedAliases.value = false })
+let appliedSearch = { folder: 'all', q: '', recipient: '', includeDottedAliases: false }
+let messagesRequest: AbortController | undefined
+let recipientMatches: MessageSummary[] | null = null
+const loadingMessages = ref(false)
+const messageError = ref('')
 const page = ref(1)
 const pageSize = 10
 const total = ref(0)
@@ -82,7 +91,7 @@ async function load() {
       if (current) selected.value = current
       else {
         selected.value = null
-        messages.value = []
+        resetMessageList()
       }
     }
   } catch (error) {
@@ -90,30 +99,80 @@ async function load() {
   }
 }
 
+function resetMessageList() {
+  messagesRequest?.abort()
+  messagesRequest = undefined
+  recipientMatches = null
+  messages.value = []
+  total.value = 0
+  detail.value = null
+  pageInput.value = ''
+  loadingMessages.value = false
+  messageError.value = ''
+}
+
 async function loadMessages() {
   if (!selected.value) return
+  if (recipientMatches !== null) {
+    const start = (page.value - 1) * pageSize
+    messages.value = recipientMatches.slice(start, start + pageSize)
+    return
+  }
+
+  const mailboxId = selected.value.id
+  messagesRequest?.abort()
+  const request = new AbortController()
+  messagesRequest = request
+  loadingMessages.value = true
+  messageError.value = ''
+  const filters = appliedSearch
+  const readPage = (nextPage: number, size: number) =>
+    api.messages(mailboxId, filters.folder, filters.q, filters.recipient, nextPage, size, request.signal)
   try {
-    const result = await api.messages(selected.value.id, folder.value, q.value, recipient.value, page.value, pageSize)
-    messages.value = result.items
-    total.value = result.total
+    if (filters.recipient) {
+      const matches = await collectRecipientMatches(readPage, filters.recipient, filters.includeDottedAliases)
+      if (messagesRequest !== request) return
+      recipientMatches = matches
+      messages.value = matches.slice(0, pageSize)
+      total.value = matches.length
+    } else {
+      const result = await readPage(page.value, pageSize)
+      if (messagesRequest !== request) return
+      messages.value = result.items
+      total.value = result.total
+    }
   } catch (error) {
-    if ((error as Error).message !== 'AUTH_REQUIRED') throw error
+    if (messagesRequest !== request || (error as Error).message === 'AUTH_REQUIRED') return
+    messages.value = []
+    total.value = 0
+    messageError.value = '读取邮件失败，请重新搜索。'
+  } finally {
+    if (messagesRequest === request) {
+      messagesRequest = undefined
+      loadingMessages.value = false
+    }
   }
 }
 
 async function select(row: any) {
   selected.value = row
-  page.value = 1
-  await loadMessages()
+  await search()
 }
 
 async function search() {
+  resetMessageList()
   page.value = 1
+  appliedSearch = {
+    folder: folder.value,
+    q: q.value,
+    recipient: recipient.value.trim(),
+    includeDottedAliases: showDottedAliases.value && includeDottedAliases.value,
+  }
   await loadMessages()
 }
 
 async function changePage(nextPage: number) {
-  if (nextPage < 1 || nextPage > totalPages.value || nextPage === page.value) return
+  if (loadingMessages.value || nextPage < 1 || nextPage > totalPages.value || nextPage === page.value) return
   page.value = nextPage
   await loadMessages()
 }
@@ -162,16 +221,16 @@ async function deleteSelected() {
   try {
     await api.deleteMailbox(selected.value.id)
     selected.value = null
-    messages.value = []
-    total.value = 0
+    resetMessageList()
     await load()
   } finally {
     actionBusy.value = false
   }
 }
 
-async function openMessage(item: any) {
-  detail.value = await api.detail(item.id)
+async function openMessage(item: MessageSummary) {
+  const result = await api.detail(item.id)
+  if (messages.value.some((message) => message.id === item.id)) detail.value = result
 }
 
 async function logout() {
@@ -234,6 +293,7 @@ onMounted(async () => {
 })
 onUnmounted(() => {
   if (refreshTimer !== undefined) window.clearInterval(refreshTimer)
+  resetMessageList()
 })
 </script>
 <template>
@@ -251,11 +311,26 @@ onUnmounted(() => {
         <div class="header-actions"><button v-if="selected && !selected.enabled" class="primary" :disabled="actionBusy" @click="startSelected">启动同步</button><button v-if="selected?.enabled" class="secondary" :disabled="actionBusy" @click="stopSelected">停止同步</button><button v-if="selected" class="danger" :disabled="actionBusy" @click="deleteSelected">删除邮箱</button><button class="secondary" @click="openCreate">添加邮箱</button><button class="secondary" @click="logout">登出</button></div>
       </header>
       <div v-if="selected" class="status"><span v-for="f in selected.folders" :key="f.name">{{ folderRoleText(f.role, f.name) }}：{{ folderStateText(f.last_success_at ? 'idle' : 'baseline_required') }}<em v-if="f.last_error_code">（{{ errorText(f.last_error_code) }}）</em></span></div>
-      <div v-if="selected" class="filters"><select v-model="folder" @change="search"><option value="all">全部邮件</option><option value="inbox">收件箱</option><option value="spam">垃圾邮件</option></select><input v-model="q" @keyup.enter="search" placeholder="搜索主题、发件人或正文"><input v-model="recipient" @keyup.enter="search" placeholder="按收件人筛选，例如 xxx.111@gmail.com"><button class="secondary" @click="search">搜索</button></div>
+      <form v-if="selected" class="filters" @submit.prevent="search">
+        <select v-model="folder" aria-label="邮件文件夹" @change="search">
+          <option value="all">全部邮件</option>
+          <option value="inbox">收件箱</option>
+          <option value="spam">垃圾邮件</option>
+        </select>
+        <input v-model="q" aria-label="邮件关键词" placeholder="搜索主题、发件人或正文">
+        <input v-model.trim="recipient" aria-label="收件人邮箱" placeholder="收件人邮箱（默认精准匹配）">
+        <label v-if="showDottedAliases" class="recipient-option">
+          <input v-model="includeDottedAliases" type="checkbox" @change="search">
+          包含点号别名
+        </label>
+        <button class="secondary" type="submit">搜索</button>
+      </form>
       <div v-if="!selected" class="empty-state"><h2>添加第一个邮箱账户</h2><p>每个邮箱独立保存 IMAP、文件夹和代理配置。</p><button class="primary" @click="openCreate">添加邮箱</button></div>
-      <article v-for="item in messages" :key="item.id" class="message-card" @click="openMessage(item)"><h3>{{ item.subject || '(无主题)' }}</h3><p>发件人：{{ item.from_address || '未知发件人' }} · {{ item.received_at || '时间未知' }}</p><p>收件人：{{ addressesText(item.to_addresses) }}</p><p>{{ item.preview }}</p></article>
-      <p v-if="selected && !messages.length" class="empty-state">没有找到邮件</p>
-      <div v-if="selected && total" class="pagination"><button class="secondary" :disabled="page <= 1" @click="changePage(1)">首页</button><button class="secondary" :disabled="page <= 1" @click="changePage(page - 1)">上一页</button><span>第 {{ page }} / {{ totalPages }} 页，共 {{ total }} 封</span><button class="secondary" :disabled="page >= totalPages" @click="changePage(page + 1)">下一页</button><button class="secondary" :disabled="page >= totalPages" @click="changePage(totalPages)">尾页</button><label class="page-jump">跳转到 <input v-model="pageInput" type="number" min="1" :max="totalPages" @keyup.enter="jumpToPage"><button class="secondary" @click="jumpToPage">跳转</button></label></div>
+      <p v-if="selected && loadingMessages" class="empty-state" role="status">正在搜索邮件…</p>
+      <p v-else-if="selected && messageError" class="empty-state error" role="alert">{{ messageError }}</p>
+      <p v-else-if="selected && !messages.length" class="empty-state">没有找到邮件</p>
+      <article v-show="!loadingMessages" v-for="item in messages" :key="item.id" class="message-card" @click="openMessage(item)"><h3>{{ item.subject || '(无主题)' }}</h3><p>发件人：{{ item.from_address || '未知发件人' }} · {{ item.received_at || '时间未知' }}</p><p>收件人：{{ addressesText(item.to_addresses) }}</p><p>{{ item.preview }}</p></article>
+      <div v-if="selected && total && !loadingMessages" class="pagination"><button class="secondary" :disabled="page <= 1" @click="changePage(1)">首页</button><button class="secondary" :disabled="page <= 1" @click="changePage(page - 1)">上一页</button><span>第 {{ page }} / {{ totalPages }} 页，共 {{ total }} 封</span><button class="secondary" :disabled="page >= totalPages" @click="changePage(page + 1)">下一页</button><button class="secondary" :disabled="page >= totalPages" @click="changePage(totalPages)">尾页</button><label class="page-jump">跳转到 <input v-model="pageInput" type="number" min="1" :max="totalPages" @keyup.enter="jumpToPage"><button class="secondary" @click="jumpToPage">跳转</button></label></div>
       <article v-if="detail" class="message-detail"><button class="secondary" @click="detail = null">关闭邮件</button><h2>{{ detail.subject || '(无主题)' }}</h2><p>发件人：{{ detail.from_address || '未知发件人' }}</p><p>收件人：{{ addressesText(detail.to_addresses) }}</p><p v-if="detail.cc_addresses?.length">抄送：{{ addressesText(detail.cc_addresses) }}</p><div v-if="detail.html_body_sanitized" class="mail-body" v-html="detail.html_body_sanitized"></div><pre v-else>{{ detail.text_body || '邮件没有正文' }}</pre></article>
     </section>
 
@@ -273,3 +348,10 @@ onUnmounted(() => {
     </div>
   </main>
 </template>
+
+<style scoped>
+.filters { flex-wrap: wrap; }
+.filters > input { flex-basis: 12rem; min-width: 0; }
+.recipient-option { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; }
+.recipient-option input { flex: none; min-height: 0; margin: 0; accent-color: #3167d8; }
+</style>
